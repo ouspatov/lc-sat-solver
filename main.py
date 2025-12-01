@@ -3,9 +3,6 @@ from argparse import ArgumentParser
 
 
 def parse_input(filename):
-    """
-    Reads a graph instance file and returns its properties.
-    """
     with open(filename, "r", encoding="utf-8") as file:
         lines = file.readlines()
 
@@ -30,16 +27,10 @@ def parse_input(filename):
 
 
 def get_variable_id(node, pos, length):
-    """
-    Maps a (node, position) pair to a unique integer variable ID.
-    """
     return (node - 1) * length + pos
 
 
 def encode(nodes, length, adj_matrix):
-    """
-    Encodes into a CNF Formula.
-    """
     clauses = []
 
     def var(n, p):
@@ -80,58 +71,40 @@ def encode(nodes, length, adj_matrix):
 
 
 def call_solver(clauses, numb_vars, output_file, solver_path, verbosity):
-    try:
-        with open(output_file, "w", encoding="utf-8") as file:
-            file.write(f"p cnf {numb_vars} {len(clauses)}\n")
-            for i in clauses:
-                file.write(" ".join(map(str, i)) + "\n")
-    except IOError as error:
-        err_msg = f"Could not write CNF file to {output_file}, reason: {error}"
-        print(err_msg)
-        return "s UNKNOWN", err_msg
+    with open(output_file, "w", encoding="utf-8") as file:
+        file.write(f"p cnf {numb_vars} {len(clauses)}\n")
+        for i in clauses:
+            file.write(" ".join(map(str, i)) + "\n")
 
-    cmd = [solver_path, "-model", output_file]
+    verb_level = "1" if verbosity else "0"
 
-    verb_level = 1 if verbosity else 0
-    cmd.append(f"-verb={verb_level}")
-
-    try:
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-            timeout=600,  # 10 min without response
-            check=False,
-        )
-        if result.returncode == 10 or result.returncode == 20:
-            return result.stdout, result.stderr
-        raise subprocess.CalledProcessError(
-            result.returncode, cmd, output=result.stdout, stderr=result.stderr
-        )
-    except subprocess.CalledProcessError as error:
-        err_msg = f"\nSolver crashed with code {error.returncode}\n--- Solver Stderr ---\n{error.stderr.strip()}"
-        return "s UNKNOWN", err_msg
-    except FileNotFoundError:
-        err_msg = f"\nSolver executable not found at {solver_path}"
-        return "s UNKNOWN", err_msg
-    except subprocess.TimeoutExpired:
-        err_msg = "\nSolver timed out after 10 minutes."
-        return "s UNKNOWN", err_msg
+    return subprocess.run(
+        [solver_path, "-model", "-verb=" + verb_level, output_file],
+        stdout=subprocess.PIPE,
+        check=False,
+    )
 
 
-def print_result(result_str, length):
-    """
-    Parses the SAT solver output to find & print the cycle.
-    """
-    lines = result_str.split("\n")
-    sat = False
+def print_result(result, length):
+    result_str = result.stdout.decode("utf-8")
+    if result.returncode != 10:
+        for line in result_str.split("\n"):
+            print(line)
+
+    if result.returncode == 20:  # returncode for UNSAT is 20
+        return False
+
+    if result.returncode != 10:  # returncode for SAT is 10
+        print(f"\n[Solver Error: Exited with code {result.returncode}]")
+        return False
+
+    # Print all stats for SAT Case
+    for line in result_str.split("\n"):
+        print(line)
+
     model = []
-
-    for line in lines:
-        if line.startswith("s SATISFIABLE"):
-            sat = True
-        if line.startswith("v"):
+    for line in result_str.split("\n"):
+        if line.startswith("v"):  # Model line
             parts = line.strip().split()[1:]
             for p in parts:
                 try:
@@ -141,9 +114,7 @@ def print_result(result_str, length):
                 except ValueError:
                     pass
 
-    if not sat:
-        return False
-    # We have a SAT model to decode
+    # SAT model to decode
     path = [0] * (length + 1)
     for val in model:
         if val > 0:
@@ -153,11 +124,14 @@ def print_result(result_str, length):
             if pos <= length:
                 path[pos] = node
 
+    # Print the human-readable result
+    print()
     print("-" * 20)
     print(f"Found Cycle of Length {length}:")
     readable_path = " -> ".join(str(path[p]) for p in range(1, length + 1))
     print(f"{readable_path} -> {path[1]}")
     print("-" * 20)
+    print()
 
     return True
 
@@ -190,7 +164,7 @@ def main():
 
     # Interactive Searching
     found = False
-    for i in range(nodes, target - 1, -1):
+    for i in range(nodes, target - 1, -1):  # start from the end
         if args.verb:
             print(f"Trying length {i}...", end=" ", flush=True)
 
@@ -198,25 +172,14 @@ def main():
             nodes, i, adj_matrix
         )  # creating CNF Formula for length i
 
-        result_str, stats_str = call_solver(
-            clauses, numb_vars, args.output, args.solver, args.verb
-        )
+        result = call_solver(clauses, numb_vars, args.output, args.solver, args.verb)
 
-        if print_result(result_str, i):
+        if print_result(result, i):
             found = True
-
-            if args.verb:
-                print("\n=== Solver Statistics ===")
-                for line in result_str.split("\n"):
-                    if line.startswith("c "):
-                        print(line)
-                print("-------------------------")
-            break  # Stop searching, we found the longest cycle >= target
+            break
         else:
             if args.verb:
-                print("UNSAT")
-                if stats_str and stats_str.strip():
-                    print(stats_str.strip())
+                print()
 
     if not found:
         print(f"\nNo simple cycle of length >= {target} exists")

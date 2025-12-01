@@ -60,24 +60,17 @@ python3 main.py [-h] [-i INPUT] [-o OUTPUT] [-s SOLVER] [-v]
 - **-v, --verb**:
   Enable verbose mode. Prints steps (Trying length...) and outputs solver statistics. (Default: Off).
 
-## 4. Error Handling
+### Example Usage
 
-The script should work without errors. However here is the error handling process if something goes wrong, implemented in `main.py`:
+```
+python3 main.py -i instances/small_pos_inst.in -v
+```
 
-- **Error: `Could not write CNF file...`**
-    - **What it means:** The script could not create the `formula.cnf` file.
+```
+python3 main.py -i instances/complex.in -o formula.cnf
+```
 
-- **Error: `Solver executable not found...`**
-    - **What it means:** The script can't find the solver file (e.g., `./glucose-syrup`).
-
-- **Error: `Solver crashed with code...`**
-    - **What it means:** The SAT solver itself failed or crashed. Probably a
-      bug!
-
-- **Error: `Solver timed out after 10 minutes.`**
-    - **What it means:** The SAT solver took more than 600 seconds (`timeout=600`) and was stopped. Too much of a timeout
-
-## 5. Instances
+## 4. Instances
 
 1.  `complex.in`
 2.  `small_neg_inst`
